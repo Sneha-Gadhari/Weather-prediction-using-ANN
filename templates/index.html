@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mumbai Weather & Air Quality Classifier</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0b0e14;
+      --surface:   #111520;
+      --card:      #161b27;
+      --border:    #1e2638;
+      --accent:    #4af0c4;
+      --accent2:   #f0a84a;
+      --text:      #e8eaf2;
+      --muted:     #6b7492;
+      --danger:    #f05a4a;
+      --sunny:     #f0c94a;
+      --cloudy:    #8ab4f0;
+      --humid:     #a8d8a8;
+      --rain:      #6090d8;
+      --storm:     #c070f0;
+      --aqi-good:      #4af0a0;
+      --aqi-moderate:  #f0d04a;
+      --aqi-unhealthy: #f0904a;
+      --aqi-hazardous: #f04a4a;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(74,240,196,.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(74,240,196,.04) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .page {
+      position: relative;
+      z-index: 1;
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 48px 24px 80px;
+    }
+
+    header { text-align: center; margin-bottom: 48px; }
+
+    .badge {
+      display: inline-block;
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      border-radius: 2px;
+      padding: 4px 12px;
+      margin-bottom: 20px;
+      opacity: 0;
+      animation: fadeUp .5s .1s ease forwards;
+    }
+
+    h1 {
+      font-size: clamp(2rem, 5vw, 3.4rem);
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -.02em;
+      opacity: 0;
+      animation: fadeUp .6s .2s ease forwards;
+    }
+    h1 span { color: var(--accent); }
+
+    .subtitle {
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: .95rem;
+      font-weight: 400;
+      opacity: 0;
+      animation: fadeUp .6s .35s ease forwards;
+    }
+
+    /* ── Tab switcher ──────────────────────────────────────── */
+    .tab-bar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 28px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0;
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      padding: 10px 20px;
+      font-family: 'Syne', sans-serif;
+      font-size: .85rem;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+      margin-bottom: -1px;
+      transition: color .2s, border-color .2s;
+      letter-spacing: .04em;
+    }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-btn:hover:not(.active) { color: var(--text); }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Grid ──────────────────────────────────────────────── */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    @media (max-width: 680px) { .main-grid { grid-template-columns: 1fr; } }
+
+    /* ── Card ──────────────────────────────────────────────── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+      opacity: 0;
+      animation: fadeUp .6s ease forwards;
+    }
+    .card:nth-child(1) { animation-delay: .45s; }
+    .card:nth-child(2) { animation-delay: .55s; }
+
+    .card-title {
+      font-size: .72rem;
+      font-family: 'Space Mono', monospace;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 20px;
+    }
+
+    /* ── Inputs ─────────────────────────────────────────────── */
+    .input-group { margin-bottom: 16px; }
+    label {
+      display: flex;
+      justify-content: space-between;
+      font-size: .8rem;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 6px;
+      letter-spacing: .04em;
+    }
+    label .unit {
+      font-family: 'Space Mono', monospace;
+      font-size: .72rem;
+      color: var(--border);
+      font-weight: 400;
+    }
+    input[type="number"] {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      color: var(--text);
+      font-family: 'Space Mono', monospace;
+      font-size: .9rem;
+      padding: 10px 14px;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s;
+      -moz-appearance: textfield;
+    }
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    input[type="number"]:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(74,240,196,.08);
+    }
+
+    /* ── Buttons ────────────────────────────────────────────── */
+    .btn-predict {
+      width: 100%;
+      margin-top: 8px;
+      padding: 14px;
+      background: var(--accent);
+      color: var(--bg);
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 1rem;
+      letter-spacing: .04em;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: transform .15s, box-shadow .15s, background .2s;
+    }
+    .btn-predict:hover {
+      background: #72f5d4;
+      box-shadow: 0 0 24px rgba(74,240,196,.35);
+      transform: translateY(-1px);
+    }
+    .btn-predict.aqi { background: var(--aqi-moderate); }
+    .btn-predict.aqi:hover { background: #f5dc72; box-shadow: 0 0 24px rgba(240,208,74,.35); }
+    .btn-predict:active { transform: translateY(0); }
+    .btn-predict.loading { pointer-events: none; opacity: .7; }
+
+    .preset-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--muted);
+      font-family: 'Syne', sans-serif;
+      font-size: .78rem;
+      padding: 5px 11px;
+      cursor: pointer;
+      transition: border-color .2s, color .2s;
+    }
+    .preset-btn:hover { border-color: var(--accent); color: var(--text); }
+
+    /* ── Result card ────────────────────────────────────────── */
+    .result-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+      background: var(--card);
+      grid-column: 1 / -1;
+      display: none;
+      animation: fadeUp .5s ease forwards;
+    }
+    .result-card.visible { display: block; }
+
+    .result-top {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+    }
+    .weather-icon { font-size: 3.5rem; line-height: 1; }
+    .result-label { flex: 1; }
+    .result-label .tag {
+      font-family: 'Space Mono', monospace;
+      font-size: .7rem;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .result-label .prediction { font-size: 2.2rem; font-weight: 800; letter-spacing: -.02em; }
+    .confidence-pill {
+      font-family: 'Space Mono', monospace;
+      font-size: .8rem;
+      padding: 6px 14px;
+      border-radius: 99px;
+      border: 1px solid;
+      font-weight: 700;
+    }
+
+    .prob-list { display: flex; flex-direction: column; gap: 10px; }
+    .prob-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: .78rem;
+      font-weight: 600;
+      margin-bottom: 5px;
+      color: var(--muted);
+    }
+    .prob-header .pct { font-family: 'Space Mono', monospace; color: var(--text); }
+    .bar-track { height: 6px; background: var(--surface); border-radius: 99px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 99px; width: 0; transition: width .8s cubic-bezier(.25,1,.5,1); }
+
+    /* ── AQI result card ────────────────────────────────────── */
+    .aqi-result-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+      background: var(--card);
+      grid-column: 1 / -1;
+      display: none;
+    }
+    .aqi-result-card.visible { display: block; animation: fadeUp .5s ease forwards; }
+
+    .aqi-top {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .aqi-circle {
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      border: 2px solid;
+      flex-shrink: 0;
+    }
+    .aqi-label-block { flex: 1; }
+    .aqi-label-block .tag {
+      font-family: 'Space Mono', monospace;
+      font-size: .7rem;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .aqi-label-block .aqi-main { font-size: 2.2rem; font-weight: 800; letter-spacing: -.02em; }
+
+    .aqi-engines {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 560px) { .aqi-engines { grid-template-columns: 1fr; } }
+
+    .engine-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .engine-title {
+      font-family: 'Space Mono', monospace;
+      font-size: .66rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .engine-label { font-size: 1.2rem; font-weight: 700; margin-bottom: 10px; }
+
+    .fuzzy-bars { display: flex; flex-direction: column; gap: 6px; }
+    .fuzzy-row { display: flex; align-items: center; gap: 8px; font-size: .72rem; }
+    .fuzzy-name { width: 80px; color: var(--muted); font-family: 'Space Mono', monospace; font-size: .66rem; }
+    .fuzzy-track { flex: 1; height: 5px; background: var(--border); border-radius: 99px; overflow: hidden; }
+    .fuzzy-fill { height: 100%; border-radius: 99px; transition: width .8s cubic-bezier(.25,1,.5,1); width: 0; }
+    .fuzzy-pct { width: 36px; text-align: right; font-family: 'Space Mono', monospace; color: var(--text); font-size: .66rem; }
+
+    .health-advice {
+      background: rgba(74,240,196,.06);
+      border: 1px solid rgba(74,240,196,.15);
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-size: .85rem;
+      color: var(--text);
+      line-height: 1.6;
+    }
+    .health-advice strong {
+      font-family: 'Space Mono', monospace;
+      font-size: .68rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .sc-note {
+      margin-top: 12px;
+      font-family: 'Space Mono', monospace;
+      font-size: .66rem;
+      color: var(--muted);
+      text-align: center;
+      letter-spacing: .04em;
+    }
+
+    /* ── Error ───────────────────────────────────────────────── */
+    .error-msg {
+      display: none;
+      background: rgba(240,90,74,.1);
+      border: 1px solid var(--danger);
+      border-radius: 8px;
+      color: var(--danger);
+      font-size: .85rem;
+      padding: 10px 14px;
+      margin-top: 10px;
+      font-family: 'Space Mono', monospace;
+    }
+
+    /* ── Animations ─────────────────────────────────────────── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(18px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .spinner {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid rgba(0,0,0,.2);
+      border-top-color: var(--bg);
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .footer-note {
+      margin-top: 48px;
+      text-align: center;
+      font-family: 'Space Mono', monospace;
+      font-size: .72rem;
+      color: var(--border);
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+
+    <header>
+      <div class="badge">LVQ · GA · ANN · Fuzzy Logic</div>
+      <h1>Mumbai <span>Weather</span> &amp; Air Quality</h1>
+      <p class="subtitle">LVQ2.1 + Genetic Algorithm + ANN + Fuzzy Logic &mdash; Soft Computing Pipeline</p>
+    </header>
+
+    <!-- Tab bar -->
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('weather', this)">🌤 Weather Prediction</button>
+      <button class="tab-btn" onclick="switchTab('pollution', this)">🌫 Air Quality Prediction</button>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         TAB 1 : WEATHER PREDICTION  (original feature, unchanged)
+         ═══════════════════════════════════════════════════════════ -->
+    <div class="tab-panel active" id="tab-weather">
+      <div class="main-grid">
+
+        <!-- Left card -->
+        <div class="card">
+          <p class="card-title">Atmospheric Readings</p>
+          <div class="input-group">
+            <label>Temperature <span class="unit">°C</span></label>
+            <input type="number" id="temperature" placeholder="e.g. 32" step="0.1" />
+          </div>
+          <div class="input-group">
+            <label>Humidity <span class="unit">%</span></label>
+            <input type="number" id="humidity" placeholder="e.g. 75" min="0" max="100" step="0.1" />
+          </div>
+          <div class="input-group">
+            <label>Rainfall <span class="unit">mm</span></label>
+            <input type="number" id="rainfall" placeholder="e.g. 12.5" min="0" step="0.1" />
+          </div>
+          <button class="btn-predict" id="predictBtn" onclick="predict()">Classify Weather</button>
+          <div class="error-msg" id="errorMsg"></div>
+        </div>
+
+        <!-- Right card -->
+        <div class="card">
+          <p class="card-title">Environmental Sensors</p>
+          <div class="input-group">
+            <label>Wind Speed <span class="unit">km/h</span></label>
+            <input type="number" id="windspeed" placeholder="e.g. 18" min="0" step="0.1" />
+          </div>
+          <div class="input-group">
+            <label>Solar Radiation <span class="unit">W/m²</span></label>
+            <input type="number" id="solar" placeholder="e.g. 320" min="0" step="1" />
+          </div>
+          <div class="input-group">
+            <label>Atmospheric Pressure <span class="unit">hPa</span></label>
+            <input type="number" id="pressure" placeholder="e.g. 1008" min="0" step="0.1" />
+          </div>
+
+          <p class="card-title" style="margin-top:20px;margin-bottom:10px">Quick Presets</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="preset-btn" onclick="loadPreset('sunny')">☀️ Sunny</button>
+            <button class="preset-btn" onclick="loadPreset('storm')">⛈ Storm</button>
+            <button class="preset-btn" onclick="loadPreset('humid')">💧 Humid</button>
+            <button class="preset-btn" onclick="loadPreset('cloudy')">🌥 Cloudy</button>
+          </div>
+
+          <p class="card-title" style="margin-top:20px;margin-bottom:10px">Live Data</p>
+          <button class="preset-btn" id="liveBtn" onclick="fetchLive()" style="width:100%;justify-content:center;padding:9px 14px;border-color:#4af0c4;color:#4af0c4;">
+            <span id="liveBtnIcon"></span>&nbsp; Load Live Mumbai Weather
+          </button>
+          <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-family:'Space Mono',monospace;font-size:.7rem;color:#6b7492;letter-spacing:0;">
+            <input type="checkbox" id="liveUseFeels" />
+            Use "feels like" temperature
+          </label>
+          <div id="liveStatus" style="display:none;margin-top:8px;font-family:'Space Mono',monospace;font-size:.7rem;color:#6b7492;"></div>
+        </div>
+
+        <!-- Result card (full width) -->
+        <div class="result-card" id="resultCard">
+          <div class="result-top">
+            <div class="weather-icon" id="weatherIcon"></div>
+            <div class="result-label">
+              <div class="tag">Predicted Weather State</div>
+              <div class="prediction" id="predictionText"></div>
+            </div>
+            <div class="confidence-pill" id="confidencePill"></div>
+          </div>
+          <p class="card-title">Class Probabilities</p>
+          <div class="prob-list" id="probList"></div>
+        </div>
+
+      </div>
+      <p class="footer-note">Weather model: sklearn MLPClassifier · 16 features (6 base + 10 engineered) · 5-class</p>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         TAB 2 : AIR QUALITY / POLLUTION PREDICTION  (new feature)
+         ═══════════════════════════════════════════════════════════ -->
+    <div class="tab-panel" id="tab-pollution">
+      <div class="main-grid">
+
+        <!-- Left card: pollution inputs -->
+        <div class="card">
+          <p class="card-title">Pollutant Readings</p>
+          <div class="input-group">
+            <label>PM2.5 <span class="unit">µg/m³</span></label>
+            <input type="number" id="pm25" placeholder="e.g. 45" min="0" step="0.1" />
+          </div>
+          <div class="input-group">
+            <label>PM10 <span class="unit">µg/m³</span></label>
+            <input type="number" id="pm10" placeholder="e.g. 80" min="0" step="0.1" />
+          </div>
+          <div class="input-group">
+            <label>NO₂ <span class="unit">µg/m³</span></label>
+            <input type="number" id="no2" placeholder="e.g. 30" min="0" step="0.1" />
+          </div>
+          <div class="input-group">
+            <label>CO <span class="unit">mg/m³</span></label>
+            <input type="number" id="co" placeholder="e.g. 1.2" min="0" step="0.01" />
+          </div>
+          <div class="input-group">
+            <label>O₃ <span class="unit">µg/m³</span></label>
+            <input type="number" id="o3" placeholder="e.g. 40" min="0" step="0.1" />
+          </div>
+          <div class="input-group">
+            <label>AQI <span class="unit">index</span></label>
+            <input type="number" id="aqi" placeholder="e.g. 85" min="0" step="1" />
+          </div>
+          <button class="btn-predict aqi" id="aqiPredictBtn" onclick="predictAQI()">Predict Air Quality</button>
+          <div class="error-msg" id="aqiErrorMsg"></div>
+        </div>
+
+        <!-- Right card: weather context + live load -->
+        <div class="card">
+          <p class="card-title">Weather Context (used in SC features)</p>
+          <div class="input-group">
+            <label>Temperature <span class="unit">°C</span></label>
+            <input type="number" id="aqi_temperature" placeholder="e.g. 32" step="0.1" />
+          </div>
+          <div class="input-group">
+            <label>Humidity <span class="unit">%</span></label>
+            <input type="number" id="aqi_humidity" placeholder="e.g. 75" min="0" max="100" step="0.1" />
+          </div>
+          <div class="input-group">
+            <label>Wind Speed <span class="unit">km/h</span></label>
+            <input type="number" id="aqi_windspeed" placeholder="e.g. 18" min="0" step="0.1" />
+          </div>
+          <div class="input-group">
+            <label>Solar Radiation <span class="unit">W/m²</span></label>
+            <input type="number" id="aqi_solar" placeholder="e.g. 200" min="0" step="1" />
+          </div>
+          <div class="input-group">
+            <label>Pressure <span class="unit">hPa</span></label>
+            <input type="number" id="aqi_pressure" placeholder="e.g. 1010" min="0" step="0.1" />
+          </div>
+
+          <p class="card-title" style="margin-top:16px;margin-bottom:10px">Load Live Data</p>
+          <button class="preset-btn" onclick="fetchLivePollution()" id="liveAqiBtn"
+            style="width:100%;padding:9px 14px;border-color:#f0d04a;color:#f0d04a;margin-bottom:8px;">
+            <span id="liveAqiBtnIcon"></span>&nbsp; Load Live Mumbai AQI
+          </button>
+          <button class="preset-btn" onclick="fetchLiveWeatherForAQI()" id="liveWeatherBtn"
+            style="width:100%;padding:9px 14px;border-color:#4af0c4;color:#4af0c4;">
+            <span id="liveWeatherBtnIcon"></span>&nbsp; Load Live Mumbai Weather
+          </button>
+          <div id="aqiLiveStatus" style="display:none;margin-top:8px;font-family:'Space Mono',monospace;font-size:.7rem;color:#6b7492;"></div>
+
+          <p class="card-title" style="margin-top:16px;margin-bottom:8px">Quick AQI Presets</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="preset-btn" onclick="loadAQIPreset('good')" style="border-color:#4af0a030;color:#4af0a0">✅ Good</button>
+            <button class="preset-btn" onclick="loadAQIPreset('moderate')" style="border-color:#f0d04a30;color:#f0d04a">⚠️ Moderate</button>
+            <button class="preset-btn" onclick="loadAQIPreset('unhealthy')" style="border-color:#f0904a30;color:#f0904a">🟠 Unhealthy</button>
+            <button class="preset-btn" onclick="loadAQIPreset('hazardous')" style="border-color:#f04a4a30;color:#f04a4a">🔴 Hazardous</button>
+          </div>
+        </div>
+
+        <!-- AQI Result card (full width) -->
+        <div class="aqi-result-card" id="aqiResultCard">
+          <div class="aqi-top">
+            <div class="aqi-circle" id="aqiCircle"></div>
+            <div class="aqi-label-block">
+              <div class="tag">Predicted Air Quality Category</div>
+              <div class="aqi-main" id="aqiPredText"></div>
+            </div>
+            <div class="confidence-pill" id="aqiConfPill"></div>
+          </div>
+
+          <div class="aqi-engines">
+            <!-- Fuzzy Logic engine -->
+            <div class="engine-box">
+              <div class="engine-title">Fuzzy Logic </div>
+              <div class="engine-label" id="fuzzyLabel"></div>
+              <div class="fuzzy-bars" id="fuzzyBars"></div>
+            </div>
+            <!-- ANN engine -->
+            <div class="engine-box" id="annEngineBox">
+              <div class="engine-title">ANN Model</div>
+              <div id="annEngineContent"></div>
+            </div>
+          </div>
+
+          <div class="health-advice" id="healthAdvice">
+            <strong>Health Recommendation</strong>
+            <span id="healthAdviceText"></span>
+          </div>
+
+          <p class="sc-note" id="scNote"></p>
+        </div>
+
+      </div>
+      <p class="footer-note">Pollution model: Fuzzy Logic (always) + ANN MLPClassifier (if trained) · 20 SC-engineered features · 4-class</p>
+    </div>
+
+  </div><!-- /page -->
+
+  <script>
+    /* ────────────────────────────────────────────
+       Tab switching
+    ──────────────────────────────────────────── */
+    function switchTab(name, btn) {
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('tab-' + name).classList.add('active');
+      btn.classList.add('active');
+    }
+
+    /* ────────────────────────────────────────────
+       WEATHER TAB
+    ──────────────────────────────────────────── */
+    const WEATHER_META = {
+      Sunny:  { icon: '☀️',  color: '#f0c94a' },
+      Cloudy: { icon: '🌥️', color: '#8ab4f0' },
+      Humid:  { icon: '💧',  color: '#a8d8a8' },
+      Rain:   { icon: '🌧️', color: '#6090d8' },
+      Storm:  { icon: '⛈️', color: '#c070f0' },
+    };
+
+    const PRESETS = {
+      sunny:  { temperature:36, humidity:30,  rainfall:0,   windspeed:8,  solar:480, pressure:1014 },
+      storm:  { temperature:27, humidity:92,  rainfall:55,  windspeed:62, solar:20,  pressure:995  },
+      humid:  { temperature:31, humidity:88,  rainfall:2,   windspeed:6,  solar:150, pressure:1008 },
+      cloudy: { temperature:28, humidity:65,  rainfall:0.5, windspeed:14, solar:100, pressure:1010 },
+    };
+
+    function loadPreset(key) {
+      const p = PRESETS[key];
+      Object.entries(p).forEach(([k,v]) => { document.getElementById(k).value = v; });
+      document.getElementById('liveStatus').style.display = 'none';
+    }
+
+    async function fetchLive() {
+      const btn    = document.getElementById('liveBtn');
+      const status = document.getElementById('liveStatus');
+      btn.disabled = true;
+      document.getElementById('liveBtnIcon').textContent = '⏳';
+      try {
+        const res  = await fetch('/live-weather');
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
+        const air    = data.temperature_air ?? data.temperature ?? 0;
+        const feels  = data.temperature_feels_like ?? air;
+        const useFl  = document.getElementById('liveUseFeels').checked;
+        document.getElementById('temperature').value = useFl ? feels : air;
+        document.getElementById('humidity').value    = data.humidity;
+        document.getElementById('rainfall').value    = data.rainfall;
+        document.getElementById('windspeed').value   = data.windspeed;
+        document.getElementById('solar').value       = data.solar;
+        document.getElementById('pressure').value    = data.pressure;
+        const t = data.time ? new Date(data.time).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) : '';
+        status.textContent   = `✓ Live data loaded — Mumbai as of ${t} (Air ${air}°C, Feels ${feels}°C)`;
+        status.style.color   = '#4af0c4';
+        status.style.display = 'block';
+        document.getElementById('liveBtnIcon').textContent = '✓';
+      } catch(e) {
+        status.textContent   = '⚠ Could not fetch: ' + e.message;
+        status.style.color   = '#f05a4a';
+        status.style.display = 'block';
+        document.getElementById('liveBtnIcon').textContent = '📡';
+      } finally { btn.disabled = false; }
+    }
+
+    async function predict() {
+      const ids  = ['temperature','humidity','rainfall','windspeed','solar','pressure'];
+      const data = {};
+      let valid  = true;
+      ids.forEach(id => { const v = document.getElementById(id).value.trim(); if (!v) valid = false; data[id] = v; });
+      const err = document.getElementById('errorMsg');
+      if (!valid) { err.textContent = 'Please fill in all six fields.'; err.style.display = 'block'; return; }
+      err.style.display = 'none';
+      const btn = document.getElementById('predictBtn');
+      btn.classList.add('loading');
+      btn.innerHTML = '<span class="spinner"></span>Classifying…';
+      try {
+        const res  = await fetch('/predict', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || 'Prediction failed');
+        showWeatherResult(json);
+      } catch(e) {
+        err.textContent = '⚠ ' + e.message;
+        err.style.display = 'block';
+      } finally {
+        btn.classList.remove('loading');
+        btn.innerHTML = 'Classify Weather';
+      }
+    }
+
+    function showWeatherResult(json) {
+      const meta = WEATHER_META[json.prediction] || { icon:'🌡️', color:'#aaa' };
+      document.getElementById('weatherIcon').textContent    = meta.icon;
+      document.getElementById('predictionText').textContent = json.prediction;
+      document.getElementById('predictionText').style.color = meta.color;
+      const pill = document.getElementById('confidencePill');
+      pill.textContent = json.confidence + '% confidence';
+      pill.style.color = pill.style.borderColor = meta.color;
+      pill.style.background = meta.color + '18';
+      const list = document.getElementById('probList');
+      list.innerHTML = '';
+      Object.entries(json.probabilities).sort((a,b)=>b[1]-a[1]).forEach(([label,pct]) => {
+        const m = WEATHER_META[label] || { color:'#aaa' };
+        const item = document.createElement('div');
+        item.className = 'prob-item';
+        item.innerHTML = `<div class="prob-header"><span>${label}</span><span class="pct">${pct}%</span></div>
+          <div class="bar-track"><div class="bar-fill" data-pct="${pct}" style="background:${m.color}"></div></div>`;
+        list.appendChild(item);
+      });
+      const card = document.getElementById('resultCard');
+      card.classList.add('visible');
+      card.style.animation = 'none'; void card.offsetWidth; card.style.animation = 'fadeUp .5s ease forwards';
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        document.querySelectorAll('.bar-fill').forEach(el => { el.style.width = el.dataset.pct + '%'; });
+      }));
+      card.scrollIntoView({ behavior:'smooth', block:'nearest' });
+    }
+
+    document.addEventListener('keydown', e => { if (e.key === 'Enter') predict(); });
+
+    /* ────────────────────────────────────────────
+       AIR QUALITY TAB
+    ──────────────────────────────────────────── */
+    const AQI_META = {
+      Good:      { icon:'😊', color:'#4af0a0' },
+      Moderate:  { icon:'😐', color:'#f0d04a' },
+      Unhealthy: { icon:'😷', color:'#f0904a' },
+      Hazardous: { icon:'☠️', color:'#f04a4a' },
+    };
+
+    const FUZZY_COLORS = {
+      Good:      '#4af0a0',
+      Moderate:  '#f0d04a',
+      Unhealthy: '#f0904a',
+      Hazardous: '#f04a4a',
+    };
+
+    const AQI_PRESETS = {
+      good:      { pm25:15,  pm10:35,  no2:20,  co:0.5,  o3:30,  aqi:40,  aqi_temperature:28, aqi_humidity:55,  aqi_windspeed:18, aqi_solar:350, aqi_pressure:1012 },
+      moderate:  { pm25:55,  pm10:100, no2:55,  co:1.2,  o3:60,  aqi:90,  aqi_temperature:32, aqi_humidity:68,  aqi_windspeed:10, aqi_solar:200, aqi_pressure:1008 },
+      unhealthy: { pm25:120, pm10:200, no2:90,  co:2.5,  o3:100, aqi:150, aqi_temperature:34, aqi_humidity:80,  aqi_windspeed:5,  aqi_solar:100, aqi_pressure:1005 },
+      hazardous: { pm25:280, pm10:420, no2:160, co:5.0,  o3:150, aqi:300, aqi_temperature:36, aqi_humidity:88,  aqi_windspeed:2,  aqi_solar:40,  aqi_pressure:1001 },
+    };
+
+    function loadAQIPreset(key) {
+      const p = AQI_PRESETS[key];
+      Object.entries(p).forEach(([k,v]) => {
+        const el = document.getElementById(k);
+        if (el) el.value = v;
+      });
+      document.getElementById('aqiLiveStatus').style.display = 'none';
+    }
+
+    async function fetchLivePollution() {
+      const btn    = document.getElementById('liveAqiBtn');
+      const status = document.getElementById('aqiLiveStatus');
+      btn.disabled = true;
+      document.getElementById('liveAqiBtnIcon').textContent = '⏳';
+      try {
+        const res  = await fetch('/live-pollution');
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
+        document.getElementById('pm25').value = data.pm25;
+        document.getElementById('pm10').value = data.pm10;
+        document.getElementById('no2').value  = data.no2;
+        document.getElementById('co').value   = data.co;
+        document.getElementById('o3').value   = data.o3;
+        document.getElementById('aqi').value  = data.aqi;
+        const t = data.time ? new Date(data.time).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) : '';
+        status.textContent   = `✓ Live AQI loaded — Mumbai as of ${t} (AQI≈${data.aqi})`;
+        status.style.color   = '#f0d04a';
+        status.style.display = 'block';
+        document.getElementById('liveAqiBtnIcon').textContent = '✓';
+      } catch(e) {
+        status.textContent   = '⚠ Could not fetch AQI: ' + e.message;
+        status.style.color   = '#f05a4a';
+        status.style.display = 'block';
+        document.getElementById('liveAqiBtnIcon').textContent = '📡';
+      } finally { btn.disabled = false; }
+    }
+
+    async function fetchLiveWeatherForAQI() {
+      document.getElementById('liveWeatherBtnIcon').textContent = '⏳';
+      await new Promise(r => setTimeout(r, 1000)); // 1 sec delay
+      const status = document.getElementById('aqiLiveStatus');
+      try {
+        document.getElementById('liveWeatherBtnIcon').textContent = '✓';
+        const res  = await fetch('/live-weather');
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
+        document.getElementById('aqi_temperature').value = data.temperature;
+        document.getElementById('aqi_humidity').value    = data.humidity;
+        document.getElementById('aqi_windspeed').value   = data.windspeed;
+        document.getElementById('aqi_solar').value       = data.solar;
+        document.getElementById('aqi_pressure').value    = data.pressure;
+        status.textContent   = '✓ Weather context loaded from live Mumbai data';
+        status.style.color   = '#4af0c4';
+        status.style.display = 'block';
+      } catch(e) {
+        document.getElementById('liveWeatherBtnIcon').textContent = '📡';
+        status.textContent   = '⚠ Could not fetch weather: ' + e.message;
+        status.style.color   = '#f05a4a';
+        status.style.display = 'block';
+      }
+    }
+
+    async function predictAQI() {
+      const fields = ['pm25','pm10','no2','co','o3','aqi',
+                      'aqi_temperature','aqi_humidity','aqi_windspeed','aqi_solar','aqi_pressure'];
+      const data   = {};
+      let valid    = true;
+      fields.forEach(id => {
+        const v = document.getElementById(id).value.trim();
+        if (!v) valid = false;
+        // strip "aqi_" prefix for the server key
+        data[id.replace('aqi_','')] = v;
+      });
+      // fix: aqi key stays as 'aqi'
+      data['aqi'] = document.getElementById('aqi').value.trim();
+
+      const err = document.getElementById('aqiErrorMsg');
+      if (!valid) { err.textContent = 'Please fill in all fields.'; err.style.display = 'block'; return; }
+      err.style.display = 'none';
+
+      const btn = document.getElementById('aqiPredictBtn');
+      btn.classList.add('loading');
+      btn.innerHTML = '<span class="spinner"></span>Analysing…';
+
+      try {
+        const res  = await fetch('/predict-pollution', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || 'Prediction failed');
+        showAQIResult(json);
+      } catch(e) {
+        err.textContent = '⚠ ' + e.message;
+        err.style.display = 'block';
+      } finally {
+        btn.classList.remove('loading');
+        btn.innerHTML = 'Predict Air Quality';
+      }
+    }
+
+    function showAQIResult(json) {
+      const meta  = AQI_META[json.final_label] || { icon:'💨', color:'#aaa' };
+      const color = json.aqi_color || meta.color;
+
+      // Top section
+      const circle = document.getElementById('aqiCircle');
+      circle.textContent      = meta.icon;
+      circle.style.borderColor = color;
+      circle.style.color       = color;
+      circle.style.background  = color + '18';
+      document.getElementById('aqiPredText').textContent = json.final_label;
+      document.getElementById('aqiPredText').style.color = color;
+
+      // Confidence pill — from ANN if available, else fuzzy dominant
+      const pill = document.getElementById('aqiConfPill');
+      if (json.ann && json.ann.confidence) {
+        pill.textContent = json.ann.confidence + '% ANN confidence';
+        pill.style.color = pill.style.borderColor = color;
+        pill.style.background = color + '18';
+        pill.style.display = '';
+      } else {
+        const domMem = Math.max(...Object.values(json.fuzzy.memberships));
+        pill.textContent = domMem + '% fuzzy match';
+        pill.style.color = pill.style.borderColor = color;
+        pill.style.background = color + '18';
+        pill.style.display = '';
+      }
+
+      // Fuzzy logic panel
+      document.getElementById('fuzzyLabel').textContent  = json.fuzzy.label;
+      document.getElementById('fuzzyLabel').style.color  = FUZZY_COLORS[json.fuzzy.label] || '#aaa';
+      const fuzzyBars = document.getElementById('fuzzyBars');
+      fuzzyBars.innerHTML = '';
+      const ORDER = ['Good', 'Moderate', 'Unhealthy', 'Hazardous'];
+
+      ORDER.forEach(label => {
+        const pct = json.fuzzy.memberships[label] || 0;
+        const c = FUZZY_COLORS[label] || '#aaa';
+
+        fuzzyBars.innerHTML += `<div class="fuzzy-row">
+          <span class="fuzzy-name">${label}</span>
+          <div class="fuzzy-track">
+            <div class="fuzzy-fill" data-pct="${pct}" style="background:${c}"></div>
+          </div>
+          <span class="fuzzy-pct">${pct}%</span>
+        </div>`;
+      });
+
+      // ANN panel
+      const annBox = document.getElementById('annEngineContent');
+      if (json.ann) {
+        let html = `<div class="engine-label" style="color:${AQI_META[json.ann.label]?.color||'#aaa'}">${json.ann.label}</div>`;
+        if (json.ann.probabilities) {
+          html += '<div class="fuzzy-bars">';
+          const ORDER = ['Good', 'Moderate', 'Unhealthy', 'Hazardous'];
+
+          ORDER.forEach(label => {
+            const pct = json.ann.probabilities[label] || 0;
+            const c = FUZZY_COLORS[label] || '#aaa';
+
+            html += `<div class="fuzzy-row">
+              <span class="fuzzy-name">${label}</span>
+              <div class="fuzzy-track">
+                <div class="fuzzy-fill" data-pct="${pct}" style="background:${c}"></div>
+              </div>
+              <span class="fuzzy-pct">${pct}%</span>
+            </div>`;
+          });
+          html += '</div>';
+        }
+        annBox.innerHTML = html;
+      } else {
+        annBox.innerHTML = '<div style="color:var(--muted);font-family:\'Space Mono\',monospace;font-size:.72rem;line-height:1.6">ANN model not trained yet.<br>Run <strong>train_pollution.py</strong><br>to enable this engine.</div>';
+      }
+
+      // Health advice
+      document.getElementById('healthAdviceText').textContent = json.health_advice;
+
+      // SC note
+      const scNote = document.getElementById('scNote');
+      scNote.textContent = json.ann
+        ? 'Dual SC engine: Fuzzy Logic (approximate reasoning) + ANN (connectionist model)'
+        : 'Using Fuzzy Logic approximate reasoning — train ANN for dual-engine prediction';
+
+      // Show card and animate bars
+      const card = document.getElementById('aqiResultCard');
+      card.classList.add('visible');
+      card.style.animation = 'none'; void card.offsetWidth; card.style.animation = 'fadeUp .5s ease forwards';
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        document.querySelectorAll('.fuzzy-fill').forEach(el => { el.style.width = (el.dataset.pct || 0) + '%'; });
+      }));
+      card.scrollIntoView({ behavior:'smooth', block:'nearest' });
+    }
+  </script>
+</body>
+</html>
